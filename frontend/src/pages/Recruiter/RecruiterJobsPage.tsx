@@ -1,0 +1,27 @@
+import type { FormEvent } from 'react';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus, BriefcaseBusiness, MapPin, X } from 'lucide-react';
+import { toast } from 'sonner';
+import { PageHeader } from '../../components/common/PageHeader';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { Badge } from '../../components/ui/Badge';
+import { jobService, type JobPayload } from '../../services/jobService';
+import { useAuth } from '../../hooks/useAuth';
+
+const emptyForm = (company = ''): JobPayload => ({ title: '', company, location: 'Bengaluru, India', workplace: 'Hybrid', type: 'Full-time', salary: '', experience: '0–1 years', description: '', skills: [], status: 'Active' });
+
+export function RecruiterJobsPage() {
+  const { user } = useAuth();
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<JobPayload>(() => emptyForm(user?.company || ''));
+  const [skillsInput, setSkillsInput] = useState('');
+  const queryClient = useQueryClient();
+  const { data: jobs = [] } = useQuery({ queryKey: ['recruiter-jobs', user?.company], queryFn: () => jobService.listMine(user?.company) });
+  const mutation = useMutation({ mutationFn: jobService.create, onSuccess: () => { toast.success('Job post created.'); setShowForm(false); setForm(emptyForm(user?.company || '')); setSkillsInput(''); queryClient.invalidateQueries({ queryKey: ['jobs'] }); queryClient.invalidateQueries({ queryKey: ['recruiter-jobs'] }); }, onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not create job.') });
+  const update = (key: Exclude<keyof JobPayload, 'skills' | 'status'>, value: string) => setForm((prev) => ({ ...prev, [key]: value } as JobPayload));
+  const submit = (event: FormEvent) => { event.preventDefault(); mutation.mutate({ ...form, skills: skillsInput.split(',').map((skill) => skill.trim()).filter(Boolean) }); };
+  return <><PageHeader eyebrow="RECRUITMENT" title="Your job posts" description="Create roles, manage open opportunities and review incoming interest." action={<Button onClick={() => setShowForm(true)}><Plus size={16} /> Create job post</Button>} />{showForm && <div className="modal-backdrop" onClick={() => setShowForm(false)}><Card className="job-form-modal" onClick={(e) => e.stopPropagation()}><div className="modal-heading"><div><div className="eyebrow">NEW OPPORTUNITY</div><h2>Create a job post</h2></div><button className="icon-button" onClick={() => setShowForm(false)}><X size={18} /></button></div><form onSubmit={submit} className="job-form"><div className="form-grid"><div className="form-field full"><label>Job title</label><input value={form.title} onChange={(e) => update('title', e.target.value)} placeholder="e.g. Data Analyst Intern" required /></div><div className="form-field"><label>Company</label><input value={form.company} onChange={(e) => update('company', e.target.value)} placeholder="Company name" required readOnly={Boolean(user?.company)} /></div><div className="form-field"><label>Location</label><input value={form.location} onChange={(e) => update('location', e.target.value)} required /></div><div className="form-field"><label>Work arrangement</label><select value={form.workplace} onChange={(e) => update('workplace', e.target.value)}><option>Remote</option><option>Hybrid</option><option>On-site</option></select></div><div className="form-field"><label>Employment type</label><select value={form.type} onChange={(e) => update('type', e.target.value)}><option>Full-time</option><option>Part-time</option><option>Internship</option><option>Contract</option></select></div><div className="form-field"><label>Salary / stipend</label><input value={form.salary} onChange={(e) => update('salary', e.target.value)} placeholder="e.g. ₹4–6 LPA" required /></div><div className="form-field"><label>Experience</label><input value={form.experience} onChange={(e) => update('experience', e.target.value)} placeholder="e.g. Fresher" required /></div><div className="form-field full"><label>Required skills (comma separated)</label><input value={skillsInput} onChange={(e) => setSkillsInput(e.target.value)} placeholder="Python, SQL, communication" required /></div><div className="form-field full"><label>Role description</label><textarea rows={4} value={form.description} onChange={(e) => update('description', e.target.value)} placeholder="Describe the role and responsibilities..." required /></div></div><div className="modal-actions"><Button type="button" variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button><Button type="submit" loading={mutation.isPending}>Publish job <Plus size={15} /></Button></div></form></Card></div>}
+    <div className="job-results-heading"><div><h2>Published opportunities</h2><p>{jobs.length} roles in your workspace</p></div></div><div className="recruiter-job-list">{jobs.map((job) => <Card className="recruiter-job-row" key={job.id}><div className="company-logo logo-blue"><BriefcaseBusiness size={18} /></div><div className="recruiter-job-info"><strong>{job.title}</strong><span>{job.company} · <MapPin size={12} /> {job.location}</span><div className="recruiter-job-meta"><span>{job.type}</span><span>{job.workplace}</span><span>{job.applicants} applicants</span></div></div><Badge tone="green">{job.status || 'Active'}</Badge><strong className="job-salary">{job.salary}</strong></Card>)}</div></>;
+}
